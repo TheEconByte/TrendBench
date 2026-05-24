@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: trendbench-postgres
+    environment:
+      POSTGRES_USER: trendbench
+      POSTGRES_PASSWORD: trendbench
+      POSTGRES_DB: trendbench
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: trendbench-clickhouse
+    environment:
+      CLICKHOUSE_DB: trendbench
+      CLICKHOUSE_USER: trendbench
+      CLICKHOUSE_PASSWORD: trendbench
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+volumes:
+  postgres_data:
+  clickhouse_data:
