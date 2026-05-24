@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/trendbench
+    username: trendbench
+    password: trendbench
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+
+clickhouse:
+  jdbc-url: jdbc:clickhouse://localhost:8123/trendbench
+  username: trendbench
+  password: trendbench
+
+server:
+  port: 8080
