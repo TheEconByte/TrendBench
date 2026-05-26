@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -67,6 +68,19 @@ public class SalesUpload {
 		this.storeId = storeId;
 		this.originalFileName = originalFileName;
 		this.fileType = fileType;
+	}
+
+	@PrePersist
+	void prePersist() {
+		if (fileType == null) {
+			fileType = "xlsx";
+		}
+		if (status == null) {
+			status = SalesUploadStatus.PENDING;
+		}
+		if (uploadedAt == null) {
+			uploadedAt = LocalDateTime.now();
+		}
 	}
 
 	public Long getUploadId() {
