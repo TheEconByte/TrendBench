@@ -22,6 +22,16 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(exception.getStatus()).body(response);
 	}
 
+	@ExceptionHandler(AuthException.class)
+	public ResponseEntity<ErrorResponse> handleAuthException(AuthException exception) {
+		ErrorResponse response = ErrorResponse.of(
+			exception.getErrorCode(),
+			exception.getMessage(),
+			exception.getDetails()
+		);
+		return ResponseEntity.status(exception.getStatus()).body(response);
+	}
+
 	@ExceptionHandler({
 		MissingServletRequestParameterException.class,
 		MissingServletRequestPartException.class,
