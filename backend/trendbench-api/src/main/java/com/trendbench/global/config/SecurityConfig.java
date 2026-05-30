@@ -1,6 +1,8 @@
 package com.trendbench.global.config;
 
 import com.trendbench.auth.jwt.JwtAuthenticationFilter;
+import com.trendbench.global.config.security.DelegatedAccessDeniedHandler;
+import com.trendbench.global.config.security.DelegatedAuthenticationEntryPoint;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,7 +31,9 @@ public class SecurityConfig {
 	@Bean
 	public SecurityFilterChain securityFilterChain(
 			HttpSecurity http,
-			JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+			JwtAuthenticationFilter jwtAuthenticationFilter,
+			DelegatedAuthenticationEntryPoint authenticationEntryPoint,
+			DelegatedAccessDeniedHandler accessDeniedHandler) throws Exception {
 
 		http
 				.csrf(AbstractHttpConfigurer::disable)
@@ -42,6 +46,9 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 						.requestMatchers(PUBLIC_ENDPOINTS).permitAll()
 						.anyRequest().authenticated())
+				.exceptionHandling(handling -> handling
+						.authenticationEntryPoint(authenticationEntryPoint)
+						.accessDeniedHandler(accessDeniedHandler))
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
