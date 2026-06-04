@@ -70,6 +70,12 @@ public class SalesUpload {
 		this.fileType = fileType;
 	}
 
+	public void markFailed(String errorMessage) {
+		this.status = SalesUploadStatus.FAILED;
+		this.errorMessage = errorMessage;
+		this.processedAt = LocalDateTime.now();
+	}
+
 	@PrePersist
 	void prePersist() {
 		if (fileType == null) {
