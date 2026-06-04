@@ -3,6 +3,8 @@ package com.trendbench.global.exception;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -20,6 +22,38 @@ public class GlobalExceptionHandler {
 			exception.getDetails()
 		);
 		return ResponseEntity.status(exception.getStatus()).body(response);
+	}
+
+	@ExceptionHandler(AuthException.class)
+	public ResponseEntity<ErrorResponse> handleAuthException(AuthException exception) {
+		ErrorResponse response = ErrorResponse.of(
+			exception.getErrorCode(),
+			exception.getMessage(),
+			exception.getDetails()
+		);
+		return ResponseEntity.status(exception.getStatus()).body(response);
+	}
+
+	@ExceptionHandler(AuthenticationException.class)
+	public ResponseEntity<ErrorResponse> handleAuthenticationException(AuthenticationException exception) {
+		AuthException authException = AuthException.invalidToken();
+		ErrorResponse response = ErrorResponse.of(
+			authException.getErrorCode(),
+			authException.getMessage(),
+			authException.getDetails()
+		);
+		return ResponseEntity.status(authException.getStatus()).body(response);
+	}
+
+	@ExceptionHandler(AccessDeniedException.class)
+	public ResponseEntity<ErrorResponse> handleAccessDeniedException(AccessDeniedException exception) {
+		AuthException authException = AuthException.accessDenied();
+		ErrorResponse response = ErrorResponse.of(
+			authException.getErrorCode(),
+			authException.getMessage(),
+			authException.getDetails()
+		);
+		return ResponseEntity.status(authException.getStatus()).body(response);
 	}
 
 	@ExceptionHandler({
