@@ -4,6 +4,8 @@ import com.trendbench.global.exception.ErrorCode;
 import com.trendbench.global.exception.UploadException;
 import com.trendbench.upload.dto.SalesUploadResponse;
 import com.trendbench.upload.entity.SalesUpload;
+import com.trendbench.upload.parser.PosDataBasis;
+import com.trendbench.upload.parser.PosDataBasisParser;
 import com.trendbench.upload.repository.SalesUploadRepository;
 import com.trendbench.upload.validation.PosSheetValidator;
 import java.util.Locale;
@@ -22,10 +24,16 @@ public class PosUploadService {
 
 	private final SalesUploadRepository salesUploadRepository;
 	private final PosSheetValidator posSheetValidator;
+	private final PosDataBasisParser posDataBasisParser;
 
-	public PosUploadService(SalesUploadRepository salesUploadRepository, PosSheetValidator posSheetValidator) {
+	public PosUploadService(
+		SalesUploadRepository salesUploadRepository,
+		PosSheetValidator posSheetValidator,
+		PosDataBasisParser posDataBasisParser
+	) {
 		this.salesUploadRepository = salesUploadRepository;
 		this.posSheetValidator = posSheetValidator;
+		this.posDataBasisParser = posDataBasisParser;
 	}
 
 	@Transactional(noRollbackFor = UploadException.class)
@@ -37,6 +45,7 @@ public class PosUploadService {
 		SalesUpload savedUpload = salesUploadRepository.save(salesUpload);
 
 		validateRequiredSheets(file, savedUpload);
+		parseDataBasis(file, savedUpload);
 
 		return SalesUploadResponse.from(savedUpload);
 	}
@@ -44,6 +53,23 @@ public class PosUploadService {
 	private void validateRequiredSheets(MultipartFile file, SalesUpload salesUpload) {
 		try {
 			posSheetValidator.validateRequiredSheets(file);
+		} catch (UploadException exception) {
+			salesUpload.markFailed(exception.getMessage());
+			salesUploadRepository.save(salesUpload);
+			throw exception;
+		}
+	}
+
+	private void parseDataBasis(MultipartFile file, SalesUpload salesUpload) {
+		try {
+			PosDataBasis dataBasis = posDataBasisParser.parse(file);
+			salesUpload.updateReportMetadata(
+				dataBasis.reportStartDate(),
+				dataBasis.reportEndDate(),
+				dataBasis.settlementBasis(),
+				dataBasis.aggregationUnit()
+			);
+			salesUploadRepository.save(salesUpload);
 		} catch (UploadException exception) {
 			salesUpload.markFailed(exception.getMessage());
 			salesUploadRepository.save(salesUpload);

@@ -13,6 +13,7 @@ import com.trendbench.global.exception.UploadException;
 import com.trendbench.upload.domain.SalesUploadStatus;
 import com.trendbench.upload.dto.SalesUploadResponse;
 import com.trendbench.upload.entity.SalesUpload;
+import com.trendbench.upload.parser.PosDataBasisParser;
 import com.trendbench.upload.repository.SalesUploadRepository;
 import com.trendbench.upload.validation.PosSheetValidator;
 import java.io.ByteArrayOutputStream;
@@ -21,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -39,6 +41,9 @@ class PosUploadServiceTest {
 
 	@Spy
 	private PosSheetValidator posSheetValidator;
+
+	@Spy
+	private PosDataBasisParser posDataBasisParser;
 
 	@InjectMocks
 	private PosUploadService posUploadService;
@@ -66,12 +71,45 @@ class PosUploadServiceTest {
 		assertThat(response.message()).isEqualTo("업로드가 접수되었습니다.");
 
 		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
-		verify(salesUploadRepository).save(captor.capture());
-		SalesUpload savedUpload = captor.getValue();
+		verify(salesUploadRepository, times(2)).save(captor.capture());
+		SalesUpload savedUpload = captor.getAllValues().get(1);
 		assertThat(savedUpload.getStoreId()).isEqualTo(1L);
 		assertThat(savedUpload.getOriginalFileName()).isEqualTo("매출리포트-260517154717.xlsx");
 		assertThat(savedUpload.getFileType()).isEqualTo("xlsx");
 		assertThat(savedUpload.getStatus()).isEqualTo(SalesUploadStatus.PENDING);
+		assertThat(savedUpload.getReportStartDate()).hasToString("2026-05-01");
+		assertThat(savedUpload.getReportEndDate()).hasToString("2026-05-31");
+		assertThat(savedUpload.getSettlementBasis()).isEqualTo("주문한 날");
+		assertThat(savedUpload.getAggregationUnit()).isEqualTo("일간");
+	}
+
+	@Test
+	void createUploadWithInvalidDataBasisMarksUploadFailed() {
+		MockMultipartFile file = createWorkbookFile(
+			"매출리포트.xlsx",
+			true,
+			"데이터 기준",
+			"결제 합계",
+			"상품 주문 상세내역"
+		);
+		when(salesUploadRepository.save(any(SalesUpload.class))).thenAnswer(invocation -> {
+			SalesUpload salesUpload = invocation.getArgument(0);
+			ReflectionTestUtils.setField(salesUpload, "uploadId", 15L);
+			return salesUpload;
+		});
+
+		assertThatThrownBy(() -> posUploadService.createUpload(file, 1L))
+			.isInstanceOfSatisfying(UploadException.class, exception -> {
+				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MISSING_DATA_BASIS_VALUE);
+				assertThat(exception.getMessage()).isEqualTo("데이터 기준 값 '시작일자'이 존재하지 않습니다.");
+			});
+
+		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
+		verify(salesUploadRepository, times(2)).save(captor.capture());
+		SalesUpload failedUpload = captor.getAllValues().get(1);
+		assertThat(failedUpload.getStatus()).isEqualTo(SalesUploadStatus.FAILED);
+		assertThat(failedUpload.getErrorMessage()).isEqualTo("데이터 기준 값 '시작일자'이 존재하지 않습니다.");
+		assertThat(failedUpload.getProcessedAt()).isNotNull();
 	}
 
 	@Test
@@ -186,12 +224,19 @@ class PosUploadServiceTest {
 	}
 
 	private MockMultipartFile createWorkbookFile(String fileName, String... sheetNames) {
+		return createWorkbookFile(fileName, false, sheetNames);
+	}
+
+	private MockMultipartFile createWorkbookFile(String fileName, boolean skipDataBasisValues, String... sheetNames) {
 		try (
 			XSSFWorkbook workbook = new XSSFWorkbook();
 			ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
 		) {
 			for (String sheetName : sheetNames) {
-				workbook.createSheet(sheetName);
+				Sheet sheet = workbook.createSheet(sheetName);
+				if ("데이터 기준".equals(sheetName) && !skipDataBasisValues) {
+					writeDataBasisRows(sheet);
+				}
 			}
 			workbook.write(outputStream);
 			return new MockMultipartFile(
@@ -203,5 +248,16 @@ class PosUploadServiceTest {
 		} catch (IOException exception) {
 			throw new IllegalStateException("테스트 XLSX 파일을 만들 수 없습니다.", exception);
 		}
+	}
+
+	private void writeDataBasisRows(Sheet sheet) {
+		sheet.createRow(0).createCell(0).setCellValue("시작일자");
+		sheet.getRow(0).createCell(1).setCellValue("2026-05-01");
+		sheet.createRow(1).createCell(0).setCellValue("종료일자");
+		sheet.getRow(1).createCell(1).setCellValue("2026-05-31");
+		sheet.createRow(2).createCell(0).setCellValue("매출 정산 기준");
+		sheet.getRow(2).createCell(1).setCellValue("주문한 날");
+		sheet.createRow(3).createCell(0).setCellValue("집계 단위");
+		sheet.getRow(3).createCell(1).setCellValue("일간");
 	}
 }
