@@ -5,6 +5,7 @@ import com.trendbench.global.exception.UploadException;
 import com.trendbench.upload.dto.SalesUploadResponse;
 import com.trendbench.upload.entity.SalesUpload;
 import com.trendbench.upload.repository.SalesUploadRepository;
+import com.trendbench.upload.validation.PosSheetValidator;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -20,12 +21,14 @@ public class PosUploadService {
 	private static final String XLSX_FILE_TYPE = "xlsx";
 
 	private final SalesUploadRepository salesUploadRepository;
+	private final PosSheetValidator posSheetValidator;
 
-	public PosUploadService(SalesUploadRepository salesUploadRepository) {
+	public PosUploadService(SalesUploadRepository salesUploadRepository, PosSheetValidator posSheetValidator) {
 		this.salesUploadRepository = salesUploadRepository;
+		this.posSheetValidator = posSheetValidator;
 	}
 
-	@Transactional
+	@Transactional(noRollbackFor = UploadException.class)
 	public SalesUploadResponse createUpload(MultipartFile file, Long storeId) {
 		validateStoreId(storeId);
 		String originalFileName = validateFile(file);
@@ -33,7 +36,19 @@ public class PosUploadService {
 		SalesUpload salesUpload = new SalesUpload(storeId, originalFileName, XLSX_FILE_TYPE);
 		SalesUpload savedUpload = salesUploadRepository.save(salesUpload);
 
+		validateRequiredSheets(file, savedUpload);
+
 		return SalesUploadResponse.from(savedUpload);
+	}
+
+	private void validateRequiredSheets(MultipartFile file, SalesUpload salesUpload) {
+		try {
+			posSheetValidator.validateRequiredSheets(file);
+		} catch (UploadException exception) {
+			salesUpload.markFailed(exception.getMessage());
+			salesUploadRepository.save(salesUpload);
+			throw exception;
+		}
 	}
 
 	private void validateStoreId(Long storeId) {
