@@ -1,3 +1,5 @@
+USE trendbench;
+
 CREATE TABLE IF NOT EXISTS raw_order_items (
     store_id UInt64,
     upload_id UInt64,
