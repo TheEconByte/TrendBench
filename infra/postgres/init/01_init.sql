@@ -2,8 +2,6 @@ CREATE TABLE IF NOT EXISTS users (
     user_id BIGSERIAL PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    nickname VARCHAR(50),
-    role VARCHAR(30) DEFAULT 'USER',
     created_at TIMESTAMP DEFAULT NOW()
 );
 

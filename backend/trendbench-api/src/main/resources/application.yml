@@ -20,8 +20,3 @@ clickhouse:
 
 server:
   port: 8080
-
-jwt:
-  secret: ${JWT_SECRET:trendbench-dev-secret-please-override-in-production-please-be-at-least-32-bytes}
-  expiration-ms: 3600000
-  issuer: trendbench
