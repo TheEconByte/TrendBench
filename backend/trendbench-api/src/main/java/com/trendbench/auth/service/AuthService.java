@@ -2,6 +2,8 @@ package com.trendbench.auth.service;
 
 import com.trendbench.auth.dto.LoginRequest;
 import com.trendbench.auth.dto.LoginResponse;
+import com.trendbench.auth.dto.SignupRequest;
+import com.trendbench.auth.dto.SignupResponse;
 import com.trendbench.auth.jwt.JwtTokenProvider;
 import com.trendbench.global.exception.AuthException;
 import com.trendbench.user.entity.User;
@@ -24,6 +26,19 @@ public class AuthService {
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtTokenProvider = jwtTokenProvider;
+	}
+
+	@Transactional
+	public SignupResponse signup(SignupRequest request) {
+		if (userRepository.existsByEmail(request.email())) {
+			throw AuthException.emailAlreadyExists(request.email());
+		}
+
+		String passwordHash = passwordEncoder.encode(request.password());
+		User user = new User(request.email(), passwordHash, request.nickname());
+
+		User saved = userRepository.save(user);
+		return SignupResponse.from(saved);
 	}
 
 	@Transactional(readOnly = true)
