@@ -23,7 +23,8 @@ public class SecurityConfig {
 	private static final String[] PUBLIC_ENDPOINTS = {
 			"/api/auth/signup",
 			"/api/auth/login",
-			"/api/health"
+			"/api/health",
+			"/api/markets/**"
 	};
 
 	@Bean
