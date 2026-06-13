@@ -42,6 +42,8 @@ class PosAnalysisServiceTest {
 
 		assertThat(response.topMenu()).isEqualTo("카페라떼");
 		assertThat(response.items()).hasSize(2);
+		assertThat(response.items().get(0).salesShare()).isEqualTo(0.16);
+		assertThat(response.items().get(1).salesShare()).isEqualTo(0.84);
 	}
 
 	@Test

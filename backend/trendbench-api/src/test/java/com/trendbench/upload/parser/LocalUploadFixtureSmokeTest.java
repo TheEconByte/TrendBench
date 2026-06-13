@@ -88,6 +88,9 @@ class LocalUploadFixtureSmokeTest {
 			dataBasis.reportEndDate()
 		);
 		assertThat(orderItems).isNotEmpty();
+		assertThat(orderItems).extracting(PosOrderItem::orderNo)
+			.doesNotContain("006", "007", "008");
+		assertThat(orderItems.stream().mapToLong(PosOrderItem::netSales).sum()).isEqualTo(42000);
 		assertThat(orderItems.get(0).orderDate()).hasToString("2026-06-13");
 		assertThat(orderItems.get(0).orderTime()).isEqualTo("11:30:59");
 		assertThat(orderItems.get(0).paymentStatus()).isEqualTo("완료");

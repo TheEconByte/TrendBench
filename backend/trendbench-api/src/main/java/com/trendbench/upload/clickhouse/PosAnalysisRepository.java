@@ -45,8 +45,7 @@ public class PosAnalysisRepository {
 				product_name,
 				product_category,
 				sum(total_sales) AS total_sales,
-				sum(total_quantity) AS total_quantity,
-				if(sum(sum(total_sales)) OVER () = 0, 0, total_sales / sum(sum(total_sales)) OVER ()) AS sales_share
+				sum(total_quantity) AS total_quantity
 			FROM menu_sales_daily
 			WHERE store_id = ? AND upload_id = ?
 			GROUP BY product_name, product_category
@@ -57,7 +56,7 @@ public class PosAnalysisRepository {
 			rs.getString("product_category"),
 			rs.getLong("total_sales"),
 			rs.getLong("total_quantity"),
-			rs.getDouble("sales_share")
+			0
 		), storeId, uploadId);
 	}
 

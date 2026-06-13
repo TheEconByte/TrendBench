@@ -10,9 +10,11 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -91,6 +93,7 @@ public class PosOrderItemParser {
 			}
 
 			Header header = findHeader(sheet);
+			Set<OrderItemKey> canceledOrderItemKeys = findCanceledOrderItemKeys(sheet, header);
 			List<PosOrderItem> orderItems = new ArrayList<>();
 			for (int rowIndex = header.rowIndex() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
 				Row row = sheet.getRow(rowIndex);
@@ -98,6 +101,9 @@ public class PosOrderItemParser {
 					continue;
 				}
 				if (!COMPLETED_PAYMENT_STATUS.equals(parseText(row, header.columnIndexes().get(PAYMENT_STATUS_COLUMN)))) {
+					continue;
+				}
+				if (canceledOrderItemKeys.contains(orderItemKey(row, header.columnIndexes()))) {
 					continue;
 				}
 				PosOrderItem orderItem = parseRow(row, header.columnIndexes(), reportStartDate, reportEndDate);
@@ -131,6 +137,28 @@ public class PosOrderItemParser {
 		}
 
 		throw missingColumnException(ORDER_DATE_COLUMN);
+	}
+
+	private Set<OrderItemKey> findCanceledOrderItemKeys(Sheet sheet, Header header) {
+		Set<OrderItemKey> canceledOrderItemKeys = new HashSet<>();
+		for (int rowIndex = header.rowIndex() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+			Row row = sheet.getRow(rowIndex);
+			if (row == null || isBlankRow(row) || !hasTextAt(row, header.columnIndexes().get(ORDER_DATE_COLUMN))) {
+				continue;
+			}
+			if ("취소".equals(parseText(row, header.columnIndexes().get(PAYMENT_STATUS_COLUMN)))) {
+				canceledOrderItemKeys.add(orderItemKey(row, header.columnIndexes()));
+			}
+		}
+		return canceledOrderItemKeys;
+	}
+
+	private OrderItemKey orderItemKey(Row row, Map<String, Integer> columnIndexes) {
+		return new OrderItemKey(
+			parseText(row, columnIndexes.get(ORDER_NO_COLUMN)),
+			parseText(row, columnIndexes.get(PRODUCT_NAME_COLUMN)),
+			parseText(row, columnIndexes.get(OPTION_NAME_COLUMN))
+		);
 	}
 
 	private boolean matchesColumn(String requiredColumn, String normalizedValue) {
@@ -370,5 +398,8 @@ public class PosOrderItemParser {
 	}
 
 	private record Header(int rowIndex, Map<String, Integer> columnIndexes) {
+	}
+
+	private record OrderItemKey(String orderNo, String productName, String optionName) {
 	}
 }

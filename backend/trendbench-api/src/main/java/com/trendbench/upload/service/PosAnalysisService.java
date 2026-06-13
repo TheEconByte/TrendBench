@@ -28,12 +28,32 @@ public class PosAnalysisService {
 	}
 
 	public MenuAnalysisResponse getMenuAnalysis(Long storeId, Long uploadId) {
-		List<MenuAnalysisItemResponse> items = posAnalysisRepository.findMenuAnalysis(storeId, uploadId);
+		List<MenuAnalysisItemResponse> items = withMenuSalesShare(
+			posAnalysisRepository.findMenuAnalysis(storeId, uploadId)
+		);
 		String topMenu = items.stream()
 			.max(Comparator.comparingLong(MenuAnalysisItemResponse::totalSales))
 			.map(MenuAnalysisItemResponse::productName)
 			.orElse(null);
 		return new MenuAnalysisResponse(storeId, uploadId, items, topMenu);
+	}
+
+	private List<MenuAnalysisItemResponse> withMenuSalesShare(List<MenuAnalysisItemResponse> items) {
+		long totalSales = items.stream()
+			.mapToLong(MenuAnalysisItemResponse::totalSales)
+			.sum();
+		if (totalSales == 0) {
+			return items;
+		}
+		return items.stream()
+			.map(item -> new MenuAnalysisItemResponse(
+				item.productName(),
+				item.productCategory(),
+				item.totalSales(),
+				item.totalQuantity(),
+				(double) item.totalSales() / totalSales
+			))
+			.toList();
 	}
 
 	public HourlyAnalysisResponse getHourlyAnalysis(Long storeId, Long uploadId) {
