@@ -3,6 +3,8 @@ package com.trendbench.upload.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,16 +12,24 @@ import static org.mockito.Mockito.when;
 
 import com.trendbench.global.exception.ErrorCode;
 import com.trendbench.global.exception.UploadException;
+import com.trendbench.upload.clickhouse.RawOrderItemRepository;
 import com.trendbench.upload.domain.SalesUploadStatus;
 import com.trendbench.upload.dto.SalesUploadResponse;
+import com.trendbench.upload.dto.SalesUploadStatusResponse;
 import com.trendbench.upload.entity.SalesUpload;
 import com.trendbench.upload.parser.PosDataBasisParser;
+import com.trendbench.upload.parser.PosOrderItem;
+import com.trendbench.upload.parser.PosOrderItemParser;
+import com.trendbench.upload.parser.PosPaymentSummaryParser;
 import com.trendbench.upload.repository.SalesUploadRepository;
 import com.trendbench.upload.validation.PosSheetValidator;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -39,11 +49,20 @@ class PosUploadServiceTest {
 	@Mock
 	private SalesUploadRepository salesUploadRepository;
 
+	@Mock
+	private RawOrderItemRepository rawOrderItemRepository;
+
 	@Spy
 	private PosSheetValidator posSheetValidator;
 
 	@Spy
 	private PosDataBasisParser posDataBasisParser;
+
+	@Spy
+	private PosPaymentSummaryParser posPaymentSummaryParser;
+
+	@Spy
+	private PosOrderItemParser posOrderItemParser;
 
 	@InjectMocks
 	private PosUploadService posUploadService;
@@ -67,20 +86,27 @@ class PosUploadServiceTest {
 		assertThat(response.uploadId()).isEqualTo(15L);
 		assertThat(response.storeId()).isEqualTo(1L);
 		assertThat(response.fileName()).isEqualTo("매출리포트-260517154717.xlsx");
-		assertThat(response.status()).isEqualTo(SalesUploadStatus.PENDING.name());
-		assertThat(response.message()).isEqualTo("업로드가 접수되었습니다.");
+		assertThat(response.status()).isEqualTo(SalesUploadStatus.SUCCESS.name());
+		assertThat(response.message()).isEqualTo("업로드 처리가 완료되었습니다.");
 
 		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
-		verify(salesUploadRepository, times(2)).save(captor.capture());
-		SalesUpload savedUpload = captor.getAllValues().get(1);
+		verify(salesUploadRepository, times(3)).save(captor.capture());
+		List<SalesUpload> savedUploads = captor.getAllValues();
+		SalesUpload savedUpload = savedUploads.get(2);
 		assertThat(savedUpload.getStoreId()).isEqualTo(1L);
 		assertThat(savedUpload.getOriginalFileName()).isEqualTo("매출리포트-260517154717.xlsx");
 		assertThat(savedUpload.getFileType()).isEqualTo("xlsx");
-		assertThat(savedUpload.getStatus()).isEqualTo(SalesUploadStatus.PENDING);
+		assertThat(savedUpload.getStatus()).isEqualTo(SalesUploadStatus.SUCCESS);
 		assertThat(savedUpload.getReportStartDate()).hasToString("2026-05-01");
 		assertThat(savedUpload.getReportEndDate()).hasToString("2026-05-31");
 		assertThat(savedUpload.getSettlementBasis()).isEqualTo("주문한 날");
 		assertThat(savedUpload.getAggregationUnit()).isEqualTo("일간");
+		assertThat(savedUpload.getProcessedAt()).isNotNull();
+
+		ArgumentCaptor<List<PosOrderItem>> orderItemsCaptor = ArgumentCaptor.forClass(List.class);
+		verify(rawOrderItemRepository).batchInsert(eq(1L), eq(15L), orderItemsCaptor.capture());
+		assertThat(orderItemsCaptor.getValue()).hasSize(1);
+		assertThat(orderItemsCaptor.getValue().get(0).productName()).isEqualTo("김치찌개");
 	}
 
 	@Test
@@ -102,11 +128,12 @@ class PosUploadServiceTest {
 			.isInstanceOfSatisfying(UploadException.class, exception -> {
 				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.MISSING_DATA_BASIS_VALUE);
 				assertThat(exception.getMessage()).isEqualTo("데이터 기준 값 '시작일자'이 존재하지 않습니다.");
-			});
+		});
 
 		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
-		verify(salesUploadRepository, times(2)).save(captor.capture());
-		SalesUpload failedUpload = captor.getAllValues().get(1);
+		verify(salesUploadRepository, times(3)).save(captor.capture());
+		List<SalesUpload> savedUploads = captor.getAllValues();
+		SalesUpload failedUpload = savedUploads.get(2);
 		assertThat(failedUpload.getStatus()).isEqualTo(SalesUploadStatus.FAILED);
 		assertThat(failedUpload.getErrorMessage()).isEqualTo("데이터 기준 값 '시작일자'이 존재하지 않습니다.");
 		assertThat(failedUpload.getProcessedAt()).isNotNull();
@@ -132,9 +159,9 @@ class PosUploadServiceTest {
 			});
 
 		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
-		verify(salesUploadRepository, times(2)).save(captor.capture());
+		verify(salesUploadRepository, times(3)).save(captor.capture());
 		List<SalesUpload> savedUploads = captor.getAllValues();
-		SalesUpload failedUpload = savedUploads.get(1);
+		SalesUpload failedUpload = savedUploads.get(2);
 		assertThat(failedUpload.getUploadId()).isEqualTo(15L);
 		assertThat(failedUpload.getStoreId()).isEqualTo(1L);
 		assertThat(failedUpload.getStatus()).isEqualTo(SalesUploadStatus.FAILED);
@@ -159,16 +186,80 @@ class PosUploadServiceTest {
 		assertThatThrownBy(() -> posUploadService.createUpload(file, 1L))
 			.isInstanceOfSatisfying(UploadException.class, exception -> {
 				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_XLSX_FILE);
-				assertThat(exception.getMessage()).isEqualTo("업로드된 XLSX 파일을 읽을 수 없습니다.");
+				assertThat(exception.getMessage()).isEqualTo("업로드된 엑셀 파일을 읽을 수 없습니다.");
+		});
+
+		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
+		verify(salesUploadRepository, times(3)).save(captor.capture());
+		List<SalesUpload> savedUploads = captor.getAllValues();
+		SalesUpload failedUpload = savedUploads.get(2);
+		assertThat(failedUpload.getUploadId()).isEqualTo(15L);
+		assertThat(failedUpload.getStatus()).isEqualTo(SalesUploadStatus.FAILED);
+		assertThat(failedUpload.getErrorMessage()).isEqualTo("업로드된 엑셀 파일을 읽을 수 없습니다.");
+		assertThat(failedUpload.getProcessedAt()).isNotNull();
+	}
+
+	@Test
+	void createUploadMarksFailedWhenRawOrderItemInsertFails() {
+		MockMultipartFile file = createWorkbookFile(
+			"매출리포트.xlsx",
+			"데이터 기준",
+			"결제 합계",
+			"상품 주문 상세내역"
+		);
+		when(salesUploadRepository.save(any(SalesUpload.class))).thenAnswer(invocation -> {
+			SalesUpload salesUpload = invocation.getArgument(0);
+			ReflectionTestUtils.setField(salesUpload, "uploadId", 15L);
+			return salesUpload;
+		});
+		doThrow(new RuntimeException("clickhouse unavailable"))
+			.when(rawOrderItemRepository)
+			.batchInsert(eq(1L), eq(15L), any());
+
+		assertThatThrownBy(() -> posUploadService.createUpload(file, 1L))
+			.isInstanceOfSatisfying(UploadException.class, exception -> {
+				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR);
+				assertThat(exception.getMessage()).isEqualTo("POS 주문 상세내역 저장에 실패했습니다.");
 			});
 
 		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
-		verify(salesUploadRepository, times(2)).save(captor.capture());
-		SalesUpload failedUpload = captor.getAllValues().get(1);
-		assertThat(failedUpload.getUploadId()).isEqualTo(15L);
+		verify(salesUploadRepository, times(3)).save(captor.capture());
+		SalesUpload failedUpload = captor.getAllValues().get(2);
 		assertThat(failedUpload.getStatus()).isEqualTo(SalesUploadStatus.FAILED);
-		assertThat(failedUpload.getErrorMessage()).isEqualTo("업로드된 XLSX 파일을 읽을 수 없습니다.");
-		assertThat(failedUpload.getProcessedAt()).isNotNull();
+		assertThat(failedUpload.getErrorMessage()).isEqualTo("POS 주문 상세내역 저장에 실패했습니다.");
+	}
+
+	@Test
+	void getUploadStatusReturnsStoredUploadStatus() {
+		SalesUpload salesUpload = new SalesUpload(1L, "매출리포트.xlsx", "xlsx");
+		ReflectionTestUtils.setField(salesUpload, "uploadId", 15L);
+		ReflectionTestUtils.setField(salesUpload, "reportStartDate", LocalDate.of(2026, 5, 1));
+		ReflectionTestUtils.setField(salesUpload, "reportEndDate", LocalDate.of(2026, 5, 31));
+		ReflectionTestUtils.setField(salesUpload, "status", SalesUploadStatus.SUCCESS);
+		ReflectionTestUtils.setField(salesUpload, "processedAt", LocalDateTime.of(2026, 5, 17, 15, 52));
+		when(salesUploadRepository.findById(15L)).thenReturn(Optional.of(salesUpload));
+
+		SalesUploadStatusResponse response = posUploadService.getUploadStatus(15L);
+
+		assertThat(response.uploadId()).isEqualTo(15L);
+		assertThat(response.storeId()).isEqualTo(1L);
+		assertThat(response.status()).isEqualTo("SUCCESS");
+		assertThat(response.reportStartDate()).isEqualTo(LocalDate.of(2026, 5, 1));
+		assertThat(response.reportEndDate()).isEqualTo(LocalDate.of(2026, 5, 31));
+		assertThat(response.processedAt()).isEqualTo(LocalDateTime.of(2026, 5, 17, 15, 52));
+		assertThat(response.errorMessage()).isNull();
+	}
+
+	@Test
+	void getUploadStatusThrowsWhenUploadDoesNotExist() {
+		when(salesUploadRepository.findById(99L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> posUploadService.getUploadStatus(99L))
+			.isInstanceOfSatisfying(UploadException.class, exception -> {
+				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UPLOAD_NOT_FOUND);
+				assertThat(exception.getMessage()).isEqualTo("업로드 이력을 찾을 수 없습니다.");
+				assertThat(exception.getDetails()).containsEntry("uploadId", 99L);
+			});
 	}
 
 	@Test
@@ -183,8 +274,8 @@ class PosUploadServiceTest {
 		assertThatThrownBy(() -> posUploadService.createUpload(file, 1L))
 			.isInstanceOfSatisfying(UploadException.class, exception -> {
 				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_FILE_TYPE);
-				assertThat(exception.getMessage()).isEqualTo("POS 매출리포트 XLSX 파일만 업로드할 수 있습니다.");
-				assertThat(exception.getDetails()).containsEntry("allowedExtension", ".xlsx");
+				assertThat(exception.getMessage()).isEqualTo("POS 매출리포트 엑셀 파일만 업로드할 수 있습니다.");
+				assertThat(exception.getDetails()).containsEntry("allowedExtensions", List.of(".xlsx", ".xls"));
 		});
 		verify(salesUploadRepository, never()).save(any(SalesUpload.class));
 	}
@@ -237,6 +328,12 @@ class PosUploadServiceTest {
 				if ("데이터 기준".equals(sheetName) && !skipDataBasisValues) {
 					writeDataBasisRows(sheet);
 				}
+				if ("결제 합계".equals(sheetName)) {
+					writePaymentSummaryRows(sheet);
+				}
+				if ("상품 주문 상세내역".equals(sheetName)) {
+					writeOrderItemRows(sheet);
+				}
 			}
 			workbook.write(outputStream);
 			return new MockMultipartFile(
@@ -259,5 +356,77 @@ class PosUploadServiceTest {
 		sheet.getRow(2).createCell(1).setCellValue("주문한 날");
 		sheet.createRow(3).createCell(0).setCellValue("집계 단위");
 		sheet.getRow(3).createCell(1).setCellValue("일간");
+	}
+
+	private void writePaymentSummaryRows(Sheet sheet) {
+		String[] headers = {
+			"기간",
+			"결제금액",
+			"부가세",
+			"결제건수",
+			"현금",
+			"카드",
+			"QR결제",
+			"계좌이체",
+			"선불지급수단",
+			"기타"
+		};
+		org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
+		for (int index = 0; index < headers.length; index++) {
+			headerRow.createCell(index).setCellValue(headers[index]);
+		}
+		sheet.createRow(1).createCell(0).setCellValue("2026-05-01");
+		sheet.getRow(1).createCell(1).setCellValue(100000);
+		sheet.getRow(1).createCell(2).setCellValue(9091);
+		sheet.getRow(1).createCell(3).setCellValue(10);
+		sheet.getRow(1).createCell(4).setCellValue(10000);
+		sheet.getRow(1).createCell(5).setCellValue(70000);
+		sheet.getRow(1).createCell(6).setCellValue(10000);
+		sheet.getRow(1).createCell(7).setCellValue(5000);
+		sheet.getRow(1).createCell(8).setCellValue(3000);
+		sheet.getRow(1).createCell(9).setCellValue(2000);
+	}
+
+	private void writeOrderItemRows(Sheet sheet) {
+		String[] headers = {
+			"주문기준일자",
+			"결제상태",
+			"주문시작시각",
+			"주문채널",
+			"주문번호",
+			"상품명",
+			"상품코드",
+			"카테고리",
+			"옵션",
+			"수량",
+			"상품가격",
+			"옵션가격",
+			"상품할인 금액",
+			"주문할인 금액",
+			"실판매금액",
+			"부가세액"
+		};
+		org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
+		for (int index = 0; index < headers.length; index++) {
+			headerRow.createCell(index).setCellValue(headers[index]);
+		}
+
+		org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+		row.createCell(0).setCellValue("2026-05-01");
+		row.createCell(1).setCellValue("완료");
+		row.createCell(2).setCellValue("12:30");
+		row.createCell(3).setCellValue("포스");
+		row.createCell(4).setCellValue("ORD-1");
+		row.createCell(5).setCellValue("김치찌개");
+		row.createCell(6).setCellValue("P001");
+		row.createCell(7).setCellValue("식사");
+		row.createCell(8).setCellValue("");
+		row.createCell(9).setCellValue(2);
+		row.createCell(10).setCellValue(9000);
+		row.createCell(11).setCellValue(0);
+		row.createCell(12).setCellValue(0);
+		row.createCell(13).setCellValue(0);
+		row.createCell(14).setCellValue(18000);
+		row.createCell(15).setCellValue(1636);
 	}
 }

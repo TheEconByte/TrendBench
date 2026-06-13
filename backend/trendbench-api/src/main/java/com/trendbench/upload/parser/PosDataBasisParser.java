@@ -16,7 +16,7 @@ import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -29,12 +29,14 @@ public class PosDataBasisParser {
 	private static final String START_DATE_LABEL = "시작일자";
 	private static final String END_DATE_LABEL = "종료일자";
 	private static final String SETTLEMENT_BASIS_LABEL = "매출 정산 기준";
+	private static final String SALES_START_TIME_LABEL = "매출 시작 시간";
 	private static final String AGGREGATION_UNIT_LABEL = "집계 단위";
 	private static final String DAILY_AGGREGATION_UNIT = "일간";
 	private static final List<String> DATA_BASIS_LABELS = List.of(
 		START_DATE_LABEL,
 		END_DATE_LABEL,
 		SETTLEMENT_BASIS_LABEL,
+		SALES_START_TIME_LABEL,
 		AGGREGATION_UNIT_LABEL
 	);
 	private static final List<DateTimeFormatter> DATE_FORMATTERS = List.of(
@@ -44,7 +46,7 @@ public class PosDataBasisParser {
 	);
 
 	public PosDataBasis parse(MultipartFile file) {
-		try (XSSFWorkbook workbook = new XSSFWorkbook(file.getInputStream())) {
+		try (Workbook workbook = PosWorkbookReader.open(file)) {
 			Sheet sheet = workbook.getSheet(DATA_BASIS_SHEET_NAME);
 			if (sheet == null) {
 				throw dataBasisException(
@@ -141,11 +143,15 @@ public class PosDataBasisParser {
 				continue;
 			}
 			Cell cell = row.getCell(labelColumnIndex);
-			if (cell != null && StringUtils.hasText(formatCell(cell))) {
+			if (cell != null && StringUtils.hasText(formatCell(cell)) && !isHelpText(cell)) {
 				return Optional.of(cell);
 			}
 		}
 		return Optional.empty();
+	}
+
+	private boolean isHelpText(Cell cell) {
+		return formatCell(cell).startsWith("[");
 	}
 
 	private boolean isDataBasisLabel(Cell cell) {
