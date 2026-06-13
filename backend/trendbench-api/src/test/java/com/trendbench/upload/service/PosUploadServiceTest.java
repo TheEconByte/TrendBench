@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.trendbench.global.exception.ErrorCode;
 import com.trendbench.global.exception.UploadException;
 import com.trendbench.upload.clickhouse.RawOrderItemRepository;
+import com.trendbench.upload.clickhouse.SalesAggregationRepository;
 import com.trendbench.upload.domain.SalesUploadStatus;
 import com.trendbench.upload.dto.SalesUploadResponse;
 import com.trendbench.upload.dto.SalesUploadStatusResponse;
@@ -51,6 +52,9 @@ class PosUploadServiceTest {
 
 	@Mock
 	private RawOrderItemRepository rawOrderItemRepository;
+
+	@Mock
+	private SalesAggregationRepository salesAggregationRepository;
 
 	@Spy
 	private PosSheetValidator posSheetValidator;
@@ -107,6 +111,7 @@ class PosUploadServiceTest {
 		verify(rawOrderItemRepository).batchInsert(eq(1L), eq(15L), orderItemsCaptor.capture());
 		assertThat(orderItemsCaptor.getValue()).hasSize(1);
 		assertThat(orderItemsCaptor.getValue().get(0).productName()).isEqualTo("김치찌개");
+		verify(salesAggregationRepository).aggregateUpload(1L, 15L);
 	}
 
 	@Test
@@ -215,6 +220,36 @@ class PosUploadServiceTest {
 		doThrow(new RuntimeException("clickhouse unavailable"))
 			.when(rawOrderItemRepository)
 			.batchInsert(eq(1L), eq(15L), any());
+
+		assertThatThrownBy(() -> posUploadService.createUpload(file, 1L))
+			.isInstanceOfSatisfying(UploadException.class, exception -> {
+				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_SERVER_ERROR);
+				assertThat(exception.getMessage()).isEqualTo("POS 주문 상세내역 저장에 실패했습니다.");
+			});
+
+		ArgumentCaptor<SalesUpload> captor = ArgumentCaptor.forClass(SalesUpload.class);
+		verify(salesUploadRepository, times(3)).save(captor.capture());
+		SalesUpload failedUpload = captor.getAllValues().get(2);
+		assertThat(failedUpload.getStatus()).isEqualTo(SalesUploadStatus.FAILED);
+		assertThat(failedUpload.getErrorMessage()).isEqualTo("POS 주문 상세내역 저장에 실패했습니다.");
+	}
+
+	@Test
+	void createUploadMarksFailedWhenSalesAggregationFails() {
+		MockMultipartFile file = createWorkbookFile(
+			"매출리포트.xlsx",
+			"데이터 기준",
+			"결제 합계",
+			"상품 주문 상세내역"
+		);
+		when(salesUploadRepository.save(any(SalesUpload.class))).thenAnswer(invocation -> {
+			SalesUpload salesUpload = invocation.getArgument(0);
+			ReflectionTestUtils.setField(salesUpload, "uploadId", 15L);
+			return salesUpload;
+		});
+		doThrow(new RuntimeException("aggregation failed"))
+			.when(salesAggregationRepository)
+			.aggregateUpload(1L, 15L);
 
 		assertThatThrownBy(() -> posUploadService.createUpload(file, 1L))
 			.isInstanceOfSatisfying(UploadException.class, exception -> {

@@ -6,6 +6,7 @@ import com.trendbench.upload.dto.SalesUploadResponse;
 import com.trendbench.upload.dto.SalesUploadStatusResponse;
 import com.trendbench.upload.entity.SalesUpload;
 import com.trendbench.upload.clickhouse.RawOrderItemRepository;
+import com.trendbench.upload.clickhouse.SalesAggregationRepository;
 import com.trendbench.upload.parser.PosDataBasis;
 import com.trendbench.upload.parser.PosDataBasisParser;
 import com.trendbench.upload.parser.PosOrderItem;
@@ -33,6 +34,7 @@ public class PosUploadService {
 	private final PosPaymentSummaryParser posPaymentSummaryParser;
 	private final PosOrderItemParser posOrderItemParser;
 	private final RawOrderItemRepository rawOrderItemRepository;
+	private final SalesAggregationRepository salesAggregationRepository;
 
 	public PosUploadService(
 		SalesUploadRepository salesUploadRepository,
@@ -40,7 +42,8 @@ public class PosUploadService {
 		PosDataBasisParser posDataBasisParser,
 		PosPaymentSummaryParser posPaymentSummaryParser,
 		PosOrderItemParser posOrderItemParser,
-		RawOrderItemRepository rawOrderItemRepository
+		RawOrderItemRepository rawOrderItemRepository,
+		SalesAggregationRepository salesAggregationRepository
 	) {
 		this.salesUploadRepository = salesUploadRepository;
 		this.posSheetValidator = posSheetValidator;
@@ -48,6 +51,7 @@ public class PosUploadService {
 		this.posPaymentSummaryParser = posPaymentSummaryParser;
 		this.posOrderItemParser = posOrderItemParser;
 		this.rawOrderItemRepository = rawOrderItemRepository;
+		this.salesAggregationRepository = salesAggregationRepository;
 	}
 
 	@Transactional(noRollbackFor = UploadException.class)
@@ -130,6 +134,7 @@ public class PosUploadService {
 				salesUpload.getReportEndDate()
 			);
 			rawOrderItemRepository.batchInsert(salesUpload.getStoreId(), salesUpload.getUploadId(), orderItems);
+			salesAggregationRepository.aggregateUpload(salesUpload.getStoreId(), salesUpload.getUploadId());
 		} catch (UploadException exception) {
 			salesUpload.markFailed(exception.getMessage());
 			salesUploadRepository.save(salesUpload);
