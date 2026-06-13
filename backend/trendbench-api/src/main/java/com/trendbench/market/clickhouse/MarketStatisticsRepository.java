@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -54,5 +55,36 @@ public class MarketStatisticsRepository {
                 rs.getDouble("saturation_score"),
                 rs.getString("status")
         ), region, industry).stream().findFirst();
+    }
+
+    public List<MarketMonthlyStatisticsResponse.MonthlyItem> findMonthly(String region, String industry) {
+        String sql = """
+                SELECT
+                    substring(toString(stat_month), 1, 7) AS period,
+                    avg_sales,
+                    avg_payment_count,
+                    store_count,
+                    open_count,
+                    close_count,
+                    sales_growth_rate,
+                    saturation_score,
+                    status
+                FROM market_statistics
+                WHERE region_name = ? AND industry_name = ? AND business_area_name = '전체'
+                ORDER BY stat_month ASC
+                """;
+
+        return clickHouseJdbcTemplate.query(sql, (rs, rowNum) ->
+                new MarketMonthlyStatisticsResponse.MonthlyItem(
+                        rs.getString("period"),
+                        rs.getLong("avg_sales"),
+                        rs.getLong("avg_payment_count"),
+                        rs.getInt("store_count"),
+                        rs.getInt("open_count"),
+                        rs.getInt("close_count"),
+                        rs.getDouble("sales_growth_rate"),
+                        rs.getDouble("saturation_score"),
+                        rs.getString("status")
+                ), region, industry);
     }
 }
