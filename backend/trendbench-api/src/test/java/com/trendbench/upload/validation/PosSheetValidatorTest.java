@@ -8,6 +8,7 @@ import com.trendbench.global.exception.ErrorCode;
 import com.trendbench.global.exception.UploadException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -19,6 +20,18 @@ class PosSheetValidatorTest {
 	@Test
 	void validateRequiredSheetsPassesWithAllRequiredSheets() {
 		MockMultipartFile file = createWorkbookFile(
+			"데이터 기준",
+			"결제 합계",
+			"상품 주문 상세내역"
+		);
+
+		assertThatCode(() -> posSheetValidator.validateRequiredSheets(file))
+			.doesNotThrowAnyException();
+	}
+
+	@Test
+	void validateRequiredSheetsSupportsOleExcelContentWithXlsxFileName() {
+		MockMultipartFile file = createOleWorkbookFile(
 			"데이터 기준",
 			"결제 합계",
 			"상품 주문 상세내역"
@@ -96,7 +109,7 @@ class PosSheetValidatorTest {
 		assertThatThrownBy(() -> posSheetValidator.validateRequiredSheets(file))
 			.isInstanceOfSatisfying(UploadException.class, exception -> {
 				assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.INVALID_XLSX_FILE);
-				assertThat(exception.getMessage()).isEqualTo("업로드된 XLSX 파일을 읽을 수 없습니다.");
+				assertThat(exception.getMessage()).isEqualTo("업로드된 엑셀 파일을 읽을 수 없습니다.");
 				assertThat(exception.getDetails()).isNull();
 			});
 	}
@@ -128,6 +141,26 @@ class PosSheetValidatorTest {
 			);
 		} catch (IOException exception) {
 			throw new IllegalStateException("테스트 XLSX 파일을 만들 수 없습니다.", exception);
+		}
+	}
+
+	private MockMultipartFile createOleWorkbookFile(String... sheetNames) {
+		try (
+			HSSFWorkbook workbook = new HSSFWorkbook();
+			ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
+		) {
+			for (String sheetName : sheetNames) {
+				workbook.createSheet(sheetName);
+			}
+			workbook.write(outputStream);
+			return new MockMultipartFile(
+				"file",
+				"매출리포트.xlsx",
+				"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+				outputStream.toByteArray()
+			);
+		} catch (IOException exception) {
+			throw new IllegalStateException("테스트 OLE 엑셀 파일을 만들 수 없습니다.", exception);
 		}
 	}
 }

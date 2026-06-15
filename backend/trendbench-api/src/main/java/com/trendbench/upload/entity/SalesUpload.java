@@ -76,6 +76,30 @@ public class SalesUpload {
 		this.processedAt = LocalDateTime.now();
 	}
 
+	public void markParsing() {
+		this.status = SalesUploadStatus.PARSING;
+		this.errorMessage = null;
+		this.processedAt = null;
+	}
+
+	public void markSuccess() {
+		this.status = SalesUploadStatus.SUCCESS;
+		this.errorMessage = null;
+		this.processedAt = LocalDateTime.now();
+	}
+
+	public void updateReportMetadata(
+		LocalDate reportStartDate,
+		LocalDate reportEndDate,
+		String settlementBasis,
+		String aggregationUnit
+	) {
+		this.reportStartDate = reportStartDate;
+		this.reportEndDate = reportEndDate;
+		this.settlementBasis = settlementBasis;
+		this.aggregationUnit = aggregationUnit;
+	}
+
 	@PrePersist
 	void prePersist() {
 		if (fileType == null) {
