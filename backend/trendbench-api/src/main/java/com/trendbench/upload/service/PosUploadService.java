@@ -3,9 +3,18 @@ package com.trendbench.upload.service;
 import com.trendbench.global.exception.ErrorCode;
 import com.trendbench.global.exception.UploadException;
 import com.trendbench.upload.dto.SalesUploadResponse;
+import com.trendbench.upload.dto.SalesUploadStatusResponse;
 import com.trendbench.upload.entity.SalesUpload;
+import com.trendbench.upload.clickhouse.RawOrderItemRepository;
+import com.trendbench.upload.clickhouse.SalesAggregationRepository;
+import com.trendbench.upload.parser.PosDataBasis;
+import com.trendbench.upload.parser.PosDataBasisParser;
+import com.trendbench.upload.parser.PosOrderItem;
+import com.trendbench.upload.parser.PosOrderItemParser;
+import com.trendbench.upload.parser.PosPaymentSummaryParser;
 import com.trendbench.upload.repository.SalesUploadRepository;
 import com.trendbench.upload.validation.PosSheetValidator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -17,15 +26,32 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class PosUploadService {
 
-	private static final String XLSX_EXTENSION = ".xlsx";
-	private static final String XLSX_FILE_TYPE = "xlsx";
+	private static final List<String> ALLOWED_EXCEL_EXTENSIONS = List.of(".xlsx", ".xls");
 
 	private final SalesUploadRepository salesUploadRepository;
 	private final PosSheetValidator posSheetValidator;
+	private final PosDataBasisParser posDataBasisParser;
+	private final PosPaymentSummaryParser posPaymentSummaryParser;
+	private final PosOrderItemParser posOrderItemParser;
+	private final RawOrderItemRepository rawOrderItemRepository;
+	private final SalesAggregationRepository salesAggregationRepository;
 
-	public PosUploadService(SalesUploadRepository salesUploadRepository, PosSheetValidator posSheetValidator) {
+	public PosUploadService(
+		SalesUploadRepository salesUploadRepository,
+		PosSheetValidator posSheetValidator,
+		PosDataBasisParser posDataBasisParser,
+		PosPaymentSummaryParser posPaymentSummaryParser,
+		PosOrderItemParser posOrderItemParser,
+		RawOrderItemRepository rawOrderItemRepository,
+		SalesAggregationRepository salesAggregationRepository
+	) {
 		this.salesUploadRepository = salesUploadRepository;
 		this.posSheetValidator = posSheetValidator;
+		this.posDataBasisParser = posDataBasisParser;
+		this.posPaymentSummaryParser = posPaymentSummaryParser;
+		this.posOrderItemParser = posOrderItemParser;
+		this.rawOrderItemRepository = rawOrderItemRepository;
+		this.salesAggregationRepository = salesAggregationRepository;
 	}
 
 	@Transactional(noRollbackFor = UploadException.class)
@@ -33,12 +59,31 @@ public class PosUploadService {
 		validateStoreId(storeId);
 		String originalFileName = validateFile(file);
 
-		SalesUpload salesUpload = new SalesUpload(storeId, originalFileName, XLSX_FILE_TYPE);
+		SalesUpload salesUpload = new SalesUpload(storeId, originalFileName, fileType(originalFileName));
 		SalesUpload savedUpload = salesUploadRepository.save(salesUpload);
+		savedUpload.markParsing();
+		salesUploadRepository.save(savedUpload);
 
 		validateRequiredSheets(file, savedUpload);
+		parseDataBasis(file, savedUpload);
+		parsePaymentSummary(file, savedUpload);
+		parseOrderItems(file, savedUpload);
+		savedUpload.markSuccess();
+		salesUploadRepository.save(savedUpload);
 
 		return SalesUploadResponse.from(savedUpload);
+	}
+
+	@Transactional(readOnly = true)
+	public SalesUploadStatusResponse getUploadStatus(Long uploadId) {
+		SalesUpload salesUpload = salesUploadRepository.findById(uploadId)
+			.orElseThrow(() -> new UploadException(
+				ErrorCode.UPLOAD_NOT_FOUND,
+				"업로드 이력을 찾을 수 없습니다.",
+				HttpStatus.NOT_FOUND,
+				Map.of("uploadId", uploadId)
+			));
+		return SalesUploadStatusResponse.from(salesUpload);
 	}
 
 	private void validateRequiredSheets(MultipartFile file, SalesUpload salesUpload) {
@@ -48,6 +93,62 @@ public class PosUploadService {
 			salesUpload.markFailed(exception.getMessage());
 			salesUploadRepository.save(salesUpload);
 			throw exception;
+		}
+	}
+
+	private void parseDataBasis(MultipartFile file, SalesUpload salesUpload) {
+		try {
+			PosDataBasis dataBasis = posDataBasisParser.parse(file);
+			salesUpload.updateReportMetadata(
+				dataBasis.reportStartDate(),
+				dataBasis.reportEndDate(),
+				dataBasis.settlementBasis(),
+				dataBasis.aggregationUnit()
+			);
+		} catch (UploadException exception) {
+			salesUpload.markFailed(exception.getMessage());
+			salesUploadRepository.save(salesUpload);
+			throw exception;
+		}
+	}
+
+	private void parsePaymentSummary(MultipartFile file, SalesUpload salesUpload) {
+		try {
+			posPaymentSummaryParser.parse(
+				file,
+				salesUpload.getReportStartDate(),
+				salesUpload.getReportEndDate()
+			);
+		} catch (UploadException exception) {
+			salesUpload.markFailed(exception.getMessage());
+			salesUploadRepository.save(salesUpload);
+			throw exception;
+		}
+	}
+
+	private void parseOrderItems(MultipartFile file, SalesUpload salesUpload) {
+		try {
+			List<PosOrderItem> orderItems = posOrderItemParser.parse(
+				file,
+				salesUpload.getReportStartDate(),
+				salesUpload.getReportEndDate()
+			);
+			rawOrderItemRepository.batchInsert(salesUpload.getStoreId(), salesUpload.getUploadId(), orderItems);
+			salesAggregationRepository.aggregateUpload(salesUpload.getStoreId(), salesUpload.getUploadId());
+		} catch (UploadException exception) {
+			salesUpload.markFailed(exception.getMessage());
+			salesUploadRepository.save(salesUpload);
+			throw exception;
+		} catch (RuntimeException exception) {
+			String message = "POS 주문 상세내역 저장에 실패했습니다.";
+			salesUpload.markFailed(message);
+			salesUploadRepository.save(salesUpload);
+			throw new UploadException(
+				ErrorCode.INTERNAL_SERVER_ERROR,
+				message,
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				Map.of("uploadId", salesUpload.getUploadId())
+			);
 		}
 	}
 
@@ -79,16 +180,24 @@ public class PosUploadService {
 		}
 
 		String trimmedFileName = originalFileName.trim();
-		if (!trimmedFileName.toLowerCase(Locale.ROOT).endsWith(XLSX_EXTENSION)) {
+		String lowerCaseFileName = trimmedFileName.toLowerCase(Locale.ROOT);
+		if (ALLOWED_EXCEL_EXTENSIONS.stream().noneMatch(lowerCaseFileName::endsWith)) {
 			throw new UploadException(
 				ErrorCode.INVALID_FILE_TYPE,
-				"POS 매출리포트 XLSX 파일만 업로드할 수 있습니다.",
+				"POS 매출리포트 엑셀 파일만 업로드할 수 있습니다.",
 				HttpStatus.BAD_REQUEST,
-				Map.of("allowedExtension", XLSX_EXTENSION)
+				Map.of("allowedExtensions", ALLOWED_EXCEL_EXTENSIONS)
 			);
 		}
 
 		return trimmedFileName;
+	}
+
+	private String fileType(String fileName) {
+		if (fileName.toLowerCase(Locale.ROOT).endsWith(".xls")) {
+			return "xls";
+		}
+		return "xlsx";
 	}
 
 	private UploadException invalidUploadRequest(String field, String message) {

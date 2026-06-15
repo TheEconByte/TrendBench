@@ -1,9 +1,12 @@
 package com.trendbench.upload.controller;
 
 import com.trendbench.upload.dto.SalesUploadResponse;
+import com.trendbench.upload.dto.SalesUploadStatusResponse;
 import com.trendbench.upload.service.PosUploadService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -27,5 +30,10 @@ public class PosUploadController {
 	) {
 		SalesUploadResponse response = posUploadService.createUpload(file, storeId);
 		return ResponseEntity.status(HttpStatus.CREATED).body(response);
+	}
+
+	@GetMapping("/{uploadId}")
+	public SalesUploadStatusResponse getUploadStatus(@PathVariable Long uploadId) {
+		return posUploadService.getUploadStatus(uploadId);
 	}
 }

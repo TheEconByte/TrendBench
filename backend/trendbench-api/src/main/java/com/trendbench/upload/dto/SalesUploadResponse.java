@@ -15,7 +15,15 @@ public record SalesUploadResponse(
 			salesUpload.getStoreId(),
 			salesUpload.getOriginalFileName(),
 			salesUpload.getStatus().name(),
-			"업로드가 접수되었습니다."
+			messageFor(salesUpload)
 		);
+	}
+
+	private static String messageFor(SalesUpload salesUpload) {
+		return switch (salesUpload.getStatus()) {
+			case SUCCESS -> "업로드 처리가 완료되었습니다.";
+			case FAILED -> "업로드 처리에 실패했습니다.";
+			default -> "업로드가 접수되었습니다.";
+		};
 	}
 }
