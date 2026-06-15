@@ -1,5 +1,6 @@
 package com.trendbench.market.clickhouse;
 
+import com.trendbench.market.dto.MarketMonthlyStatisticsResponse;
 import com.trendbench.market.dto.MarketStatisticsSummaryResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
