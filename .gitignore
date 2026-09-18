@@ -22,3 +22,17 @@ dist/
 # Upload files
 uploads/
 *.xlsx
+
+# Next.js / local artifacts
+.next/
+out/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+.env.*
+!.env.example
+data/raw/
+legacy/**/build/
+legacy/**/.gradle/
+legacy/**/bin/
