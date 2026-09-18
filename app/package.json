@@ -2,30 +2,43 @@
   "name": "trendbench",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
+    "postinstall": "prisma generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate dev",
+    "db:status": "prisma migrate status"
   },
   "engines": {
     "node": ">=24 <25"
   },
   "dependencies": {
+    "@better-auth/prisma-adapter": "1.7.5",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "better-auth": "1.7.5",
     "decimal.js": "10.6.0",
     "next": "16.3.5",
+    "pg": "8.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.1.11"
   },
   "devDependencies": {
     "@types/node": "24.13.5",
+    "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.5",
+    "prisma": "7.10.0",
     "typescript": "6.0.3",
     "vitest": "5.0.1"
   }

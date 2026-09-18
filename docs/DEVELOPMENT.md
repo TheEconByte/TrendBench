@@ -15,7 +15,7 @@ npm --prefix app ci
 npm --prefix app run dev
 ```
 
-http://localhost:3000 — 재무계획 입력·검증·계산 화면. DB나 외부 API를 사용하지 않는다.
+http://localhost:3000 — 가입·로그인과 인증된 재무계획 초안/불변 결과 화면. 외부 API는 사용하지 않는다.
 http://localhost:3000/api/health — 프로세스 생존 상태. DB·인증·외부 API 준비 상태를 보장하는 응답이 아니다.
 
 ```sh
@@ -51,20 +51,38 @@ docker compose --env-file infra/.env -f infra/compose.yaml ps
 - 컨테이너 정지: `docker compose --env-file infra/.env -f infra/compose.yaml stop`.
 - `down -v`는 데이터를 삭제하므로 일상 종료 명령으로 쓰지 않는다.
 
-현재 시작 화면은 DB에 연결하지 않는다. Prisma migration과 인증 설정은 TASKS의 F2에서 구현한다. 존재하지 않는 DB 테이블이나 인증 API를 준비 완료로 간주하지 않는다.
+DB 기동 후 최초 1회 migration과 client 생성을 실행한다. 기존 DB를 초기화하는 `prisma migrate reset`은 사용하지 않는다.
+
+```sh
+npm --prefix app run db:validate
+npm --prefix app run db:generate
+npm --prefix app run db:migrate -- --name f2_auth_and_plans
+npm --prefix app run db:status
+```
+
+Better Auth 1.7.5는 이메일·비밀번호와 DB 세션을 담당한다. `BETTER_AUTH_SECRET`은 32자 이상의 고엔트로피 값으로 설정하고 저장소에 커밋하지 않는다. 실제 이메일 발송, 비밀번호 복구, 소셜 로그인은 제공하지 않는다.
 
 ## 코드 배치
 
 - `app/src/app`: 페이지·레이아웃·얇은 Route Handler.
-- `app/src/features/finance`: Zod 입력, decimal 계산, 대출 일정, 시나리오, 첫 화면. 계산 순수 함수는 React·DB·외부 API에 의존하지 않는다.
-- 이후 기능 구현 시 `app/src/features/plans`, `market`, `funding`에 필요한 파일을 추가한다.
-- 공통 DB·인증 연결은 도입 시 `app/src/lib`에 둔다.
-- Prisma, catalog, scripts는 실제 저장·적재 작업을 만들 때 `app/` 아래 추가한다.
+- `app/src/features/finance`: Zod 입력, decimal 계산, 대출 일정, 시나리오. 계산 순수 함수는 React·DB·외부 API에 의존하지 않는다.
+- `app/src/features/plans`: 인증 후 계획 목록·입력·결과 이력 UI와 API 경계 테스트.
+- `app/src/lib`: Prisma 단일 client, Better Auth, 세션·오류 응답.
+- `app/prisma`: Better Auth core tables, `plans`, `plan_results`, 순서가 있는 migration.
 - 가짜 데이터와 미구현 서비스의 빈 코드를 미리 생성하지 않는다.
 
 ## CI
 
-`.github/workflows/check.yml`은 Node 24에서 `npm ci`, lint, typecheck, Vitest, build를 실행한다. 현재 CI는 F1 계산 규칙을 검증하지만 DB 연결·로그인·저장 권한은 아직 검증하지 않는다.
+`.github/workflows/check.yml`은 Node 24에서 `npm ci`, lint, typecheck, Vitest, build를 실행한다. Vitest는 F1 계산과 미로그인 차단, 소유자 조건, revision 충돌, 서버 계산, 중복 결과 재사용을 검증한다. 실제 PostgreSQL 종단 검증은 별도로 실행한다.
+
+## F2 API 정책
+
+- `/api/auth/*`: Better Auth handler.
+- `/api/plans`: 내 계획 생성·목록.
+- `/api/plans/{id}`: 소유자만 상세·revision 수정·삭제.
+- `/api/plans/{id}/calculations`: 저장된 입력만 서버에서 계산하고 결과를 append-only로 저장.
+- `/api/plans/{id}/results[/{resultId}]`: 소유자만 결과 목록·상세 조회.
+- 미로그인은 401, 타인 리소스와 없는 ID는 404, 입력 오류는 400, 오래된 revision은 409다.
 
 ## F1 계산 정책
 

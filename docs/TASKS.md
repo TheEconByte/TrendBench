@@ -9,7 +9,7 @@
 - [x] Next.js 시작 화면과 PostgreSQL 전용 개발 구성 작성
 - [x] 의존성 설치·정적 검사·프로덕션 빌드·HTTP 응답 검증
 
-PostgreSQL은 Compose 설정만 검증했다. 로컬 Docker 데몬을 실행한 뒤 컨테이너 기동 검증이 필요하다. 세부 결과는 REPOSITORY_REORGANIZATION.md를 따른다.
+PostgreSQL 17 컨테이너 기동과 상태 확인을 완료했다. 세부 결과는 REPOSITORY_REORGANIZATION.md를 따른다.
 
 ## F1 — 재무 계산 핵심 (완료)
 
@@ -23,12 +23,14 @@ PostgreSQL은 Compose 설정만 검증했다. 로컬 Docker 데몬을 실행한 
 
 ## F2 — 인증과 계획 저장
 
-- [ ] Prisma·Better Auth의 검증된 버전 및 인증 테이블 구성
-- [ ] plans/plan_results migration, 입력·결과 스키마 검증
-- [ ] 로그인·로그아웃·계획 입력·초안 저장·계산·재접속 조회
-- [ ] 소유자 권한, 초안 revision 충돌, 결과 불변성·중복 계산 처리
+- [x] Prisma·Better Auth의 검증된 버전 및 인증 테이블 구성
+- [x] plans/plan_results migration, 입력·결과 스키마 검증
+- [x] 로그인·로그아웃·계획 입력·초안 저장·계산·재접속 조회
+- [x] 소유자 권한, 초안 revision 충돌, 결과 불변성·중복 계산 처리
 
 완료 기준: 두 사용자 간 조회·수정·삭제·계산 차단. 미로그인 저장 차단. 기존 결과가 가정 수정 후 바뀌지 않음.
+
+2026-09-18 완료 메모: Prisma 7.10.0, Better Auth 1.7.5, 인증/업무 migration, Route Handler, 한국어 UI와 24개 Vitest를 구현했다. PostgreSQL 17에 migration을 적용하고 두 사용자 간 조회·수정·삭제·계산·결과 접근 차단, 미로그인 차단, revision 충돌, 중복 계산 재사용, 과거 결과 불변성, 로그아웃, DB 재기동 후 재로그인·계획 조회를 실제 HTTP 요청으로 확인했다. 브라우저에서도 로그인·저장 계획 불러오기·로그아웃을 확인했다.
 
 ## F3 — 상권 데이터 연결
 
