@@ -15,12 +15,13 @@ npm --prefix app ci
 npm --prefix app run dev
 ```
 
-http://localhost:3000 — 개발 시작 화면.
+http://localhost:3000 — 재무계획 입력·검증·계산 화면. DB나 외부 API를 사용하지 않는다.
 http://localhost:3000/api/health — 프로세스 생존 상태. DB·인증·외부 API 준비 상태를 보장하는 응답이 아니다.
 
 ```sh
 npm --prefix app run lint
 npm --prefix app run typecheck
+npm --prefix app run test
 npm --prefix app run build
 npm --prefix app run start
 ```
@@ -55,14 +56,22 @@ docker compose --env-file infra/.env -f infra/compose.yaml ps
 ## 코드 배치
 
 - `app/src/app`: 페이지·레이아웃·얇은 Route Handler.
-- 기능 구현 시 `app/src/features/finance`, `plans`, `market`, `funding`에 필요한 파일을 추가한다.
+- `app/src/features/finance`: Zod 입력, decimal 계산, 대출 일정, 시나리오, 첫 화면. 계산 순수 함수는 React·DB·외부 API에 의존하지 않는다.
+- 이후 기능 구현 시 `app/src/features/plans`, `market`, `funding`에 필요한 파일을 추가한다.
 - 공통 DB·인증 연결은 도입 시 `app/src/lib`에 둔다.
 - Prisma, catalog, scripts는 실제 저장·적재 작업을 만들 때 `app/` 아래 추가한다.
 - 가짜 데이터와 미구현 서비스의 빈 코드를 미리 생성하지 않는다.
 
 ## CI
 
-`.github/workflows/check.yml`은 Node 24에서 `npm ci`, lint, typecheck, build를 실행한다. 계산 테스트와 종단 테스트는 해당 기능 구현 후 CI에 추가한다. 현재 CI는 DB 연결·로그인·금융 계산의 정확성을 검증하지 않는다.
+`.github/workflows/check.yml`은 Node 24에서 `npm ci`, lint, typecheck, Vitest, build를 실행한다. 현재 CI는 F1 계산 규칙을 검증하지만 DB 연결·로그인·저장 권한은 아직 검증하지 않는다.
+
+## F1 계산 정책
+
+- 금액 입력·출력은 원 단위 정수 문자열이며 계산은 `decimal.js`를 사용한다.
+- 원 단위 결과는 `ROUND_HALF_UP`으로 반올림한다. 대출 일정은 월별 이자·원금을 같은 규칙으로 반올림하고 마지막 달 원금으로 잔액을 0원에 맞춘다.
+- 빈 선택값은 `null`로 유지하고 0과 구분한다. 대출금 0 또는 `null`은 무차입으로 처리한다.
+- 거치는 이자만 지급하며 전체 상환기간에 포함한다. 만기일시상환·변동금리·보증료·일수별 이자는 지원하지 않는다.
 
 ## 데이터 검증
 
