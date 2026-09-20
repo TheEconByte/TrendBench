@@ -1,5 +1,13 @@
-import 'dotenv/config';
+import { existsSync } from 'node:fs';
+import { loadEnvFile } from 'node:process';
 import { defineConfig } from 'prisma/config';
+
+// The Prisma CLI does not read Next.js-style env files on its own. Load the
+// same files the app uses so `npm run db:*` works with a single app/.env.local.
+// loadEnvFile never overwrites an already-set variable, so the first match wins.
+for (const file of ['.env.local', '.env']) {
+  if (existsSync(file)) loadEnvFile(file);
+}
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',

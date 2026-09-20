@@ -1,7 +1,19 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 
-export type ApiErrorCode = 'UNAUTHORIZED' | 'NOT_FOUND' | 'INVALID_INPUT' | 'REVISION_CONFLICT' | 'INTERNAL_ERROR';
+export type ApiErrorCode =
+  | 'UNAUTHORIZED'
+  | 'NOT_FOUND'
+  | 'INVALID_INPUT'
+  | 'REVISION_CONFLICT'
+  | 'INTERNAL_ERROR'
+  | 'RELEASE_UNAVAILABLE'
+  | 'INVALID_DISTRICT_CODE'
+  | 'INVALID_AREA_CODE'
+  | 'AREA_NOT_FOUND'
+  | 'AMBIGUOUS_AREA_CODE'
+  | 'INVALID_INDUSTRY_CODE'
+  | 'UNSUPPORTED_INDUSTRY';
 
 export function apiError(status: number, code: ApiErrorCode, message: string, fields?: unknown) {
   return NextResponse.json({ error: { code, message, ...(fields ? { fields } : {}) } }, { status });

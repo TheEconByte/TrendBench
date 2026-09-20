@@ -14,7 +14,8 @@
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
     "db:migrate": "prisma migrate dev",
-    "db:status": "prisma migrate status"
+    "db:status": "prisma migrate status",
+    "market:load": "node --env-file-if-exists=.env.local scripts/load-market.ts"
   },
   "engines": {
     "node": ">=24 <25"
